@@ -3,8 +3,9 @@
 
 #include "struct_typedef.h"
 #include "stdint.h"
-#include "../Components/remote/remote.h"
 #include "../../Application/auto_aim.h"  //【新增】引入自瞄头文件，支持target_info_t结构体
+#include "../ALL_Task/analyze_from_supercapacitor_task.h"
+#include "../ALL_Task/analyze_from_referee_task.h"  // 【新增】包含裁判系统协议定义
 
 /* --- 模式枚举定义 --- */
 
@@ -23,6 +24,26 @@ typedef enum {
     SHOOT_STOP = 0,      // 停止发射
     SHOOT_READY,         // 摩擦轮起旋
 } shoot_mode_e;
+
+typedef struct {
+    int16_t capacity_voltage;       // 电容剩余电压 * 100
+    int16_t chassis_output_power;   // 底盘实时输出功率 * 10
+    int16_t cap_charge_power;       // 电容实时充电功率 * 10，仅充电时为正
+    uint8_t temperature;            // 温度
+    uint8_t status;                 // 状态标志位
+} supercap_info_t;
+
+typedef struct {
+    // 0x101 核心数据
+    uint16_t buffer_energy;            // 底盘缓冲能量
+    uint16_t shooter_17mm_barrel_heat; // 17mm当前热量
+    int16_t  capacity_voltage;         // 电容剩余电压
+    int16_t  chassis_output_power;     // 底盘实时输出功率
+
+    // 0x102 附加数据
+    uint8_t  robot_id;                 // 机器人ID
+    uint8_t  HP_deducation_reason;     // 扣血原因
+} gateway_c_board_t;
 
 /* --- 核心控制结构体 --- */
 
@@ -53,26 +74,16 @@ typedef struct {
         uint8_t  vision_online;  // 视觉系统在线标志
     } monitor;
 
-    // 5. 输入引用指针
-    const RC_ctrl_t *rc;         // 遥控器原始数据引用
+    // 5. 超级电容
+    supercap_info_t supercap;
 
+    // 6. 裁判系统原生数据
+    referee_info_t referee_info;
+
+    // 7. 整理好准备发送给 C 板的网关数据
+    gateway_c_board_t gateway_c_board;
     // ==========【新增核心】自瞄视觉数据 - 全局共享 ==========
     target_info_t target_info;   // 上位机下发的自瞄数据(valid,shoot,yaw,pitch)
-
-    struct {
-        // 0x101 核心数据
-        uint16_t current_HP;               // 当前血量
-        uint16_t shooter_17mm_barrel_heat; // 17mm当前热量
-        uint16_t buffer_energy;            // 底盘缓冲能量
-        uint16_t stage_remain_time;        // 比赛剩余时间
-
-        // 0x102 附加数据
-        uint16_t allow_bullet_17;          // 17mm允许发弹量
-        uint8_t  armor_id;                 // 受击装甲板ID
-        uint8_t  HP_deducation_reason;     // 扣血原因
-        uint8_t  place_status;             // 场地占用情况 (0~3)
-        uint8_t  game_progress;            // 比赛进度
-    } gateway_referee_t;
 
 } robot_ctrl_info_t;
 

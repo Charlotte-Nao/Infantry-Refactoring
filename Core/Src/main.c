@@ -33,7 +33,6 @@
 
 #include "../../Bsp/can/bsp_can.h"
 
-#include "../../Components/remote/remote.h"
 
 #include "../../Application/robot_global.h"
 /* USER CODE END Includes */
@@ -113,7 +112,6 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   bsp_can_init();
-  Robot_Global_Init();
   /* USER CODE END 2 */
 
   /* Call init function for freertos objects (in cmsis_os2.c) */

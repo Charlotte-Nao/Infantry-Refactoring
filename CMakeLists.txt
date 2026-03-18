@@ -37,43 +37,31 @@ enable_language(C ASM)
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME}
         Application/struct_typedef.h
+        Application/robot_global.c
+        Application/robot_global.h
         Bsp/can/bsp_can.c
         Bsp/can/bsp_can.h
         Bsp/LED/bsp_LED.c
         Bsp/LED/bsp_LED.h
         Bsp/uart/bsp_uart.c
         Bsp/uart/bsp_uart.h
-        Components/remote/remote.c
-        Components/remote/remote.h
         Components/ist8310_i2c/ist8310_driver.c
         Components/ist8310_i2c/ist8310_driver.h
-        Components/BMI088/BMI088driver.c
-        Components/BMI088/BMI088Middleware.c
-        Algorithm/MahonyAHRS/MahonyAHRS.c
-        Application/mahony.c
-        Application/mahony.h
         Application/auto_aim.c
         Application/auto_aim.h
         Bsp/usb_cdc/bsp_usb_cdc.c
         Bsp/usb_cdc/bsp_usb_cdc.h
-        Components/motor/motor.c
         Components/ist8310_i2c/ist8310_middleware.c
         Components/ist8310_i2c/ist8310_middleware.h
-        Application/robot_global.c
-        Application/robot_global.h
-        ALL_Task/sensor_task.c
-        ALL_Task/sensor_task.h
-        ALL_Task/motor_task.c
-        ALL_Task/motor_task.h
-        ALL_Task/chassis_task.c
-        ALL_Task/chassis_task.h
-        ALL_Task/gimbal_task.c
-        ALL_Task/gimbal_task.h
         Application/auto_aim.c
-        Bsp/RLS/RLS.c
-        Bsp/RLS/RLS.h
-        Application/power_reallocate.c
-        Application/power_reallocate.h
+        ALL_Task/send_to_referee_task.c
+        ALL_Task/send_to_referee_task.h
+        ALL_Task/send_to_C_board_task.c
+        ALL_Task/send_to_C_board_task.h
+        ALL_Task/analyze_from_referee_task.c
+        ALL_Task/analyze_from_referee_task.h
+        ALL_Task/analyze_from_supercapacitor_task.c
+        ALL_Task/analyze_from_supercapacitor_task.h
 )
 
 # Add STM32CubeMX generated sources
