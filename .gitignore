@@ -1,0 +1,31 @@
+# --- JetBrains CLion ---
+.idea/
+cmake-build-*/
+*.i
+*.s
+
+# --- 编译输出 (STM32/C++) ---
+*.elf
+*.bin
+*.hex
+*.map
+*.lst
+*.obj
+*.o
+*.d
+
+# --- CMake 缓存与临时文件 ---
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/ ; 这一行根据你的 cmake 文件夹结构决定是否需要
+Makefile
+cmake_install.cmake
+install_manifest.txt
+
+# --- 操作系统临时文件 ---
+.DS_Store
+Thumbs.db
+
+# --- 其他 ---
+*.bak
+*.log
