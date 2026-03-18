@@ -79,9 +79,8 @@ void gimbal_task_func(void const * argument) {
     auto_aim_init(usb);
 
     /**************************************** 【静态状态变量区 - 防抖/状态机/计时专用，无冗余】 ****************************************/
-    static uint8_t last_relax_toggle = 0;    // 云台失能模式按键 上一帧状态 - 按键防抖，防止误触
-    static uint8_t last_mode_toggle = 0;     // 云台模式切换按键 上一帧状态 - 按键防抖，防止误触
-    static uint8_t last_shoot_toggle = 0;       // 发射命令 上一帧状态 - 用于自瞄连续开火计数
+    static uint8_t last_ctrl_cmd = 0;        // 全局使能按键 上一帧状态 (取代原有的 shoot/relax)
+    static uint8_t last_b_cmd = 0;           // 全局失能按键 上一帧状态
     static uint8_t is_initialized = 0;       // 云台初始化标志位 0-未初始化 1-已初始化 防止上电瞬间角度突变甩动
     // 拨弹轮状态机枚举：正常发射/堵转判定中/反转逃逸中 三段式状态机，卡弹处理核心逻辑
     static enum { STIR_NORMAL, STIR_BLOCKING, STIR_REVERSING } stir_state = STIR_NORMAL;
@@ -124,45 +123,49 @@ void gimbal_task_func(void const * argument) {
         else {
             robot_ctrl.monitor.remote_online = 1;  // 置位遥控器在线标志位
 
-            /********************* 发射模式切换：F按键/遥控器档位 双路切换 *********************/
-            // VT13 F键按下且防抖：发射就绪 ↔ 发射停止 切换
-            /* KEY_VT13_F is 0x0200 (uint16_t). If we assign the raw bitmask directly to a uint8_t
-               it will be truncated to 0. Convert to a 0/1 boolean explicitly to avoid this bug. */
-            uint8_t shoot_ready_cmd = KEY_PRESSED(robot_ctrl.rc->vt13.key_vt13.v, KEY_VT13_F);
-            uint8_t shoot_trigger = (shoot_ready_cmd && !last_shoot_toggle);     // 按键上升沿触发，防抖
-            if (shoot_trigger) {
-                robot_ctrl.shoot_mode = (robot_ctrl.shoot_mode == SHOOT_STOP) ? SHOOT_READY : SHOOT_STOP;
-            }
-            last_shoot_toggle = shoot_ready_cmd; // 更新发射按键上一帧状态，用于防抖
-
-            // // VT13遥控器档位切换：S档(发射档) ↔ 其他档 切换，优先级与F键一致
-            // if (robot_ctrl.rc->vt13.rc_vt13.sw != last_sw_state) {
-            //     robot_ctrl.shoot_mode = (robot_ctrl.rc->vt13.rc_vt13.sw == RC_SW_S_VT13) ? SHOOT_READY : SHOOT_STOP;
-            //     last_sw_state = robot_ctrl.rc->vt13.rc_vt13.sw;     // 更新档位上一帧状态，用于防抖
-            // }
-            /********************* 云台工作模式切换：失能 ↔ 手动 ↔ 自瞄 *********************/
-            // 云台失能模式触发条件：VT13遥控器暂停键 或 VT13 C键 按下
-            uint8_t relax_cmd = (robot_ctrl.rc->vt13.rc_vt13.pause) || KEY_PRESSED(robot_ctrl.rc->vt13.key_vt13.v, KEY_VT13_C);
-            uint8_t relax_trigger = (relax_cmd && !last_relax_toggle); // 按键上升沿触发，防抖
-            // 云台模式切换条件：VT13遥控器自定义左按键 或 鼠标右键 按下 (原先为 VT13 G 键)
+            /********************* 全局使能/失能 与 自瞄模式切换 *********************/
+            // 按键提取
+            uint8_t ctrl_cmd = KEY_PRESSED(robot_ctrl.rc->vt13.key_vt13.v, KEY_VT13_CTRL) || robot_ctrl.rc->vt13.rc_vt13.custom_r;
+            uint8_t b_cmd = KEY_PRESSED(robot_ctrl.rc->vt13.key_vt13.v, KEY_VT13_B) || robot_ctrl.rc->vt13.rc_vt13.pause;
             uint8_t mode_cmd = (robot_ctrl.rc->vt13.rc_vt13.custom_l) || (robot_ctrl.rc->vt13.mouse_vt13.press_r);
-            uint8_t mode_trigger = (mode_cmd && !last_mode_toggle);     // 按键上升沿触发，防抖
 
-            // 触发放松切换：失能 ↔ 手动 互切，同时清零初始化标志位，重连后防甩动
-            if (relax_trigger) {
-                robot_ctrl.gimbal_mode = (robot_ctrl.gimbal_mode == GIMBAL_RELAX) ? GIMBAL_REMOTE : GIMBAL_RELAX;
-                is_initialized = 0;
-                auto_shoot_count = 0;                            // 新增：切换模式时清零自瞄开火计数
-            }
-            // 触发模式切换：手动 ↔ 自瞄 互切，仅在云台使能状态下有效
-            if (mode_trigger && robot_ctrl.gimbal_mode != GIMBAL_RELAX) {
-                robot_ctrl.gimbal_mode = (robot_ctrl.gimbal_mode == GIMBAL_REMOTE) ? GIMBAL_AUTO : GIMBAL_REMOTE;
-                auto_shoot_count = 0;                            // 新增：切换模式时清零自瞄开火计数
+            // 上升沿触发检测
+            uint8_t ctrl_trigger = (ctrl_cmd && !last_ctrl_cmd);
+            uint8_t b_trigger = (b_cmd && !last_b_cmd);
+            // 1. 全局使能 (CTRL)：云台和摩擦轮不管在什么状态，全部开启！
+            if (ctrl_trigger) {
+                // 如果云台之前是失能，则进入手动使能，并重置初始化防甩标志
+                if (robot_ctrl.gimbal_mode == GIMBAL_RELAX) {
+                    robot_ctrl.gimbal_mode = GIMBAL_REMOTE;
+                    is_initialized = 0;
+                }
+                // 强制开启摩擦轮
+                robot_ctrl.shoot_mode = SHOOT_READY;
+                auto_shoot_count = 0;
             }
 
-            // 更新按键上一帧状态，完成防抖逻辑
-            last_relax_toggle = relax_cmd;
-            last_mode_toggle = mode_cmd;
+            // 2. 全局失能 (B)：全部切入无力状态
+            if (b_trigger) {
+                robot_ctrl.gimbal_mode = GIMBAL_RELAX;
+                robot_ctrl.shoot_mode = SHOOT_STOP;
+                auto_shoot_count = 0;
+            }
+
+            // 3. 长按模式切换：按住右键进入自瞄，松开切回手动，仅在云台使能状态下有效
+            if (robot_ctrl.gimbal_mode != GIMBAL_RELAX) {
+                if (mode_cmd) { // 如果按住了鼠标右键或自定义侧键
+                    if (robot_ctrl.gimbal_mode != GIMBAL_AUTO) {
+                        robot_ctrl.gimbal_mode = GIMBAL_AUTO;
+                        auto_shoot_count = 0; // 刚切入自瞄时清零开火计数
+                    }
+                } else { // 松开时自动切回遥控/鼠标手动模式
+                    robot_ctrl.gimbal_mode = GIMBAL_REMOTE;
+                }
+            }
+
+            // 更新按键上一帧状态，完成防抖
+            last_ctrl_cmd = ctrl_cmd;
+            last_b_cmd = b_cmd;
 
             /**************************************** 云台角度闭环控制核心逻辑 ****************************************/
             if (robot_ctrl.gimbal_mode != GIMBAL_RELAX) {  // 云台非失能模式 → 使能，进入角度闭环控制
@@ -284,11 +287,12 @@ void gimbal_task_func(void const * argument) {
             }
             else if(robot_ctrl.gimbal_mode == GIMBAL_AUTO)
             {
-                // ===================== 修改：自瞄模式开火条件 =====================
-                // 自瞄模式开火条件：遥控器触发 + 发射就绪 + 连续3次shoot==1
-                shoot_cmd = (robot_ctrl.rc->vt13.mouse_vt13.press_l || robot_ctrl.rc->vt13.rc_vt13.trigger)
-                          && (robot_ctrl.shoot_mode == SHOOT_READY)
-                          && (auto_shoot_count >= AUTO_SHOOT_TRIGGER_CNT);
+                // 自瞄模式开火条件：(手动按下左键/扳机 OR 视觉满足连续开火条件) + 发射就绪
+                uint8_t manual_fire = (robot_ctrl.rc->vt13.mouse_vt13.press_l || robot_ctrl.rc->vt13.rc_vt13.trigger);
+                uint8_t auto_fire = (auto_shoot_count >= AUTO_SHOOT_TRIGGER_CNT);
+
+                // 只要满足手动强制开火或视觉准许开火，且摩擦轮已转起，就立即开火
+                shoot_cmd = (manual_fire || auto_fire) && (robot_ctrl.shoot_mode == SHOOT_READY);
             }
 
             // ========== 拨弹轮三段式状态机：正常发射 → 堵转判定 → 反转逃逸 【完整保留】 ==========

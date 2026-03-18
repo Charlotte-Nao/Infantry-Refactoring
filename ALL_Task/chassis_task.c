@@ -26,7 +26,13 @@
 // 回正相关参数
 #define YAW_ALIGN_THRESHOLD     0.05f    // 放宽到位阈值（适配机械误差，约2.86度）
 #define WHEEL_ACTIVE_THRESHOLD  0.01f    // 拨轮有效输入阈值
-#define QE_ACTIVE_THRESHOLD     0.01f     // Q/E有效输入阈值
+#define SHIFT_ACTIVE_THRESHOLD     0.01f     // Q/E有效输入阈值
+
+// 超级电容能量阈值 (单位: J)
+#define CAP_ENERGY_HIGH         1200
+#define CAP_ENERGY_MIDDLE       600
+#define CAP_ENERGY_LOW          200
+
 
 /* --- 静态控制变量 --- */
 static float world_yaw_target = 0.0f;
@@ -35,16 +41,16 @@ static float vx_ramp = 0.0f, vy_ramp = 0.0f;
 
 static uint32_t last_rc_tick = 0;
 
-// 扩展：新增Q/E相关状态变量，和拨轮统一管理
+// 扩展：底盘自转与回正相关状态变量
 static uint8_t last_wheel_active = 0;    // 上一帧拨轮是否激活
-static uint8_t last_qe_active = 0;       // 上一帧Q/E是否激活
+static uint8_t last_shift_active = 0;       // 上一帧键盘旋转是否激活(现用于SHIFT自转判断)
 static uint8_t yaw_align_enable = 0;     // 回正使能标志（1=需要回正，0=不需要）
-static float last_manual_vw = 0.0f;      // 保存「拨轮/Q/E」松开前的最后有效旋转速度（统一变量，避免冲突）
-// 新增：Q/E 按键切换状态与防抖记录（用于实现按键切换而非持续按住）
-static uint8_t left_rotate_toggle = 0;   // Q键切换：左旋状态（1=左旋开启）
-static uint8_t right_rotate_toggle = 0;  // E键切换：右旋状态（1=右旋开启）
-static uint8_t last_q_pressed = 0;       // 上一帧 Q 键状态（防抖）
-static uint8_t last_e_pressed = 0;       // 上一帧 E 键状态（防抖）
+static float last_manual_vw = 0.0f;      // 保存松开前的最后有效旋转速度
+
+// 新增：SHIFT/G 键切换自转与防抖记录
+static uint8_t auto_spin_enable = 0;     // 自转（小陀螺）状态（1=开启）
+static uint8_t last_shift_pressed = 0;   // 上一帧 SHIFT 键状态（防抖）
+static uint8_t last_g_pressed = 0;       // 上一帧 G 键状态（防抖）
 
 
 uint16_t cnt = 0;
@@ -69,7 +75,8 @@ void chassis_task_func(void const * argument) {
     struct motor_device *yaw_m = motor_get_device("GM6020_YAW");
 
     const RC_ctrl_t *rc = robot_ctrl.rc;
-    static uint8_t last_toggle_cmd = 0;
+    static uint8_t last_ctrl_cmd = 0;
+    static uint8_t last_b_cmd = 0;
     float wheel_targets[4] = {0};
 
     /******************************************************************************************************************/
@@ -82,7 +89,6 @@ void chassis_task_func(void const * argument) {
     while (1) {
         uint32_t current_tick = osKernelSysTick();
 
-        //打印接受的数据
         static uint32_t last_gateway_print_tick = 0;
         if (current_tick - last_gateway_print_tick > 500) {
             struct uart_device *uart1 = uart_get_device("uart1_dma");
@@ -91,27 +97,25 @@ void chassis_task_func(void const * argument) {
                 "====== MAIN BOARD CAN RX TEST ======\r\n"
                 " [Test] CAN_Cnt: %d \r\n"
                 " [RAW 101]: %02X %02X %02X %02X %02X %02X %02X %02X \r\n"
-                " [RAW 102]: %02X %02X %02X %02X %02X %02X %02X %02X \r\n"
+                " [RAW 102]: %02X %02X \r\n"
                 "------------------------------------\r\n"
-                "  > Game : Prog: %d | Time: %d s | Place: %d\r\n"
-                "  > State: HP: %d | Heat: %d | Buf: %d J\r\n"
-                "  > Shoot: Allow17: %d | ArmorID: %d | Hurt: %d\r\n"
+                "  > Energy : Buf: %d J | Heat: %d \r\n"
+                "  > SuperCap: Vol: %d mV | Power: %d W \r\n"
+                "  > Status : RobotID: %d | Hurt_Reason: %d \r\n"
                 "====================================\r\n\r\n",
                 cnt,
+                // 打印 0x101 原始帧 (8字节)
                 can_raw_101[0], can_raw_101[1], can_raw_101[2], can_raw_101[3],
                 can_raw_101[4], can_raw_101[5], can_raw_101[6], can_raw_101[7],
-                can_raw_102[0], can_raw_102[1], can_raw_102[2], can_raw_102[3],
-                can_raw_102[4], can_raw_102[5], can_raw_102[6], can_raw_102[7],
-                // 解析后的黄金数据：
-                robot_ctrl.gateway_referee_t.game_progress,
-                robot_ctrl.gateway_referee_t.stage_remain_time,
-                robot_ctrl.gateway_referee_t.place_status,
-                robot_ctrl.gateway_referee_t.current_HP,
-                robot_ctrl.gateway_referee_t.shooter_17mm_barrel_heat,
-                robot_ctrl.gateway_referee_t.buffer_energy,
-                robot_ctrl.gateway_referee_t.allow_bullet_17,
-                robot_ctrl.gateway_referee_t.armor_id,
-                robot_ctrl.gateway_referee_t.HP_deducation_reason
+                // 打印 0x102 原始帧 (2字节)
+                can_raw_102[0], can_raw_102[1],
+                // 解析后的下位 C 板数据：
+                robot_ctrl.gateway_c_board.buffer_energy,
+                robot_ctrl.gateway_c_board.shooter_17mm_barrel_heat,
+                robot_ctrl.gateway_c_board.capacity_voltage,
+                robot_ctrl.gateway_c_board.chassis_output_power,
+                robot_ctrl.gateway_c_board.robot_id,
+                robot_ctrl.gateway_c_board.HP_deducation_reason
                 );
             }
             last_gateway_print_tick = current_tick;
@@ -126,38 +130,45 @@ void chassis_task_func(void const * argument) {
             // 掉线时重置所有标志和保存的速度
             yaw_align_enable = 0;
             last_wheel_active = 0;
-            last_qe_active = 0;
+            last_shift_active = 0;
             last_manual_vw = 0.0f;
             // 清除 Q/E 切换态与按键防抖，避免断线后滞留旋转状态
-            left_rotate_toggle = 0;
-            right_rotate_toggle = 0;
-            last_q_pressed = 0;
-            last_e_pressed = 0;
+            // 清除自转状态与防抖，避免断线/失能后滞留旋转状态
+            auto_spin_enable = 0;
+            last_shift_pressed = 0;
+            last_g_pressed = 0;
         } else {
             robot_ctrl.monitor.remote_online = 1;
             /**********************************************************************************************************/
             // 底盘模式切换
-            uint8_t toggle_cmd = (KEY_PRESSED(rc->vt13.key_vt13.v, KEY_VT13_CTRL) || rc->vt13.rc_vt13.custom_r);
-            uint8_t toggle_trigger = (toggle_cmd && !last_toggle_cmd);
+            uint8_t ctrl_cmd = KEY_PRESSED(rc->vt13.key_vt13.v, KEY_VT13_CTRL) || rc->vt13.rc_vt13.custom_r;
+            uint8_t b_cmd = KEY_PRESSED(rc->vt13.key_vt13.v, KEY_VT13_B) || rc->vt13.rc_vt13.pause;
 
-            if (toggle_trigger) {
-                if (robot_ctrl.chassis_mode != CHASSIS_RELAX) {
-                    robot_ctrl.chassis_mode = CHASSIS_RELAX;
-                    // 模式切换为放松时，重置所有标志
-                    yaw_align_enable = 0;
-                    last_wheel_active = 0;
-                    last_qe_active = 0;
-                    last_manual_vw = 0.0f;
-                    // 切换到放松时也清除 Q/E 切换态与防抖
-                    left_rotate_toggle = 0;
-                    right_rotate_toggle = 0;
-                    last_q_pressed = 0;
-                    last_e_pressed = 0;
-                } else {
-                    robot_ctrl.chassis_mode = CHASSIS_FOLLOW;
-                }
+            uint8_t ctrl_trigger = (ctrl_cmd && !last_ctrl_cmd);
+            uint8_t b_trigger = (b_cmd && !last_b_cmd);
+
+            // 1. 全局使能 (CTRL)：无脑切入跟随模式
+            if (ctrl_trigger) {
+                robot_ctrl.chassis_mode = CHASSIS_FOLLOW;
             }
-            last_toggle_cmd = toggle_cmd;
+
+            // 2. 全局失能 (B)：无脑切入放松模式，并清空各种中间状态
+            if (b_trigger) {
+                robot_ctrl.chassis_mode = CHASSIS_RELAX;
+                // 模式切换为放松时，重置所有标志
+                yaw_align_enable = 0;
+                last_wheel_active = 0;
+                last_shift_active = 0;
+                last_manual_vw = 0.0f;
+                // 切换到放松时也清除 Q/E 切换态与防抖
+                // 清除自转状态与防抖，避免断线/失能后滞留旋转状态
+                auto_spin_enable = 0;
+                last_shift_pressed = 0;
+                last_g_pressed = 0;
+            }
+
+            last_ctrl_cmd = ctrl_cmd;
+            last_b_cmd = b_cmd;
         }
 
         /**************************************************************************************************************/
@@ -171,35 +182,49 @@ void chassis_task_func(void const * argument) {
                     float vw_rc = (abs(rc->vt13.rc_vt13.wheel) > RC_DEADZONE) ? ((float)rc->vt13.rc_vt13.wheel / 660.0f) : 0.0f;
 
                     float vx_kb = 0.0f, vy_kb = 0.0f, vw_kb = 0.0f;
-                    float speed_ratio = KEY_PRESSED(rc->vt13.key_vt13.v, KEY_VT13_SHIFT) ? 0.7f : 0.5f;
+                    float speed_ratio;
+
+                    // 获取下位 C 板转发的超级电容剩余能量
+                    uint16_t cap_energy = robot_ctrl.gateway_c_board.buffer_energy;
+
+                    // 依据电容能量动态分配速度倍率
+                    if (cap_energy > CAP_ENERGY_HIGH) {
+                        speed_ratio = 1.5f;       // 满电爆发模式
+                    } else if (cap_energy > CAP_ENERGY_MIDDLE) {
+                        speed_ratio = 1.0f;       // 正常作战模式
+                    } else if (cap_energy > CAP_ENERGY_LOW) {
+                        speed_ratio = 0.7f;       // 节流模式
+                    } else {
+                        speed_ratio = 0.5f;       // 苟命模式，防止断电
+                    }
 
                     if (KEY_PRESSED(rc->vt13.key_vt13.v, KEY_VT13_W)) vy_kb += speed_ratio;
                     if (KEY_PRESSED(rc->vt13.key_vt13.v, KEY_VT13_S)) vy_kb -= speed_ratio;
                     if (KEY_PRESSED(rc->vt13.key_vt13.v, KEY_VT13_A)) vx_kb -= speed_ratio;
                     if (KEY_PRESSED(rc->vt13.key_vt13.v, KEY_VT13_D)) vx_kb += speed_ratio;
 
-                    // Q/E: 切换式按键（按一次切换左旋/右旋状态），使用上升沿检测实现防抖
-                    uint8_t q_pressed = KEY_PRESSED(rc->vt13.key_vt13.v, KEY_VT13_Q);
-                    uint8_t e_pressed = KEY_PRESSED(rc->vt13.key_vt13.v, KEY_VT13_E);
-                    uint8_t q_trigger = (q_pressed && !last_q_pressed); // Q 上升沿
-                    uint8_t e_trigger = (e_pressed && !last_e_pressed); // E 上升沿
+                    // --- SHIFT/G 小陀螺 (自转) 逻辑 ---
+                    uint8_t shift_pressed = KEY_PRESSED(rc->vt13.key_vt13.v, KEY_VT13_SHIFT);
+                    uint8_t g_pressed = KEY_PRESSED(rc->vt13.key_vt13.v, KEY_VT13_G);
 
-                    if (q_trigger) {
-                        left_rotate_toggle = !left_rotate_toggle;    // 切换左旋状态
-                        if (left_rotate_toggle) right_rotate_toggle = 0; // 互斥，打开左则关闭右
+                    uint8_t shift_trigger = (shift_pressed && !last_shift_pressed); // SHIFT 上升沿
+                    uint8_t g_trigger = (g_pressed && !last_g_pressed);             // G 上升沿
+
+                    if (shift_trigger) {
+                        auto_spin_enable = 1;    // SHIFT 开启自转
                     }
-                    if (e_trigger) {
-                        right_rotate_toggle = !right_rotate_toggle;  // 切换右旋状态
-                        if (right_rotate_toggle) left_rotate_toggle = 0; // 互斥，打开右则关闭左
+                    if (g_trigger) {
+                        auto_spin_enable = 0;    // G 取消自转
                     }
 
-                    // 根据切换状态设置 vw_kb 为固定手动速度（与 speed_ratio 同量级），或保持为 0
-                    if (left_rotate_toggle) vw_kb = -speed_ratio;
-                    else if (right_rotate_toggle) vw_kb = speed_ratio;
+                    // 开启自转时，赋予旋转速度
+                    if (auto_spin_enable) {
+                        vw_kb = -speed_ratio;    // 负号为左旋，可根据操作习惯改为正号
+                    }
 
                     // 更新上一帧按键状态（防抖记录）
-                    last_q_pressed = q_pressed;
-                    last_e_pressed = e_pressed;
+                    last_shift_pressed = shift_pressed;
+                    last_g_pressed = g_pressed;
 
                     float total_vx = vx_rc + vx_kb;
                     float total_vy = vy_rc + vy_kb;
@@ -219,7 +244,7 @@ void chassis_task_func(void const * argument) {
 
                     // 步骤1：判断当前拨轮、Q/E是否处于激活状态
                     uint8_t current_wheel_active = (fabsf(vw_rc) > WHEEL_ACTIVE_THRESHOLD) ? 1 : 0;
-                    uint8_t current_qe_active = (fabsf(vw_kb) > QE_ACTIVE_THRESHOLD) ? 1 : 0;
+                    uint8_t current_qe_active = (fabsf(vw_kb) > SHIFT_ACTIVE_THRESHOLD) ? 1 : 0;
                     // 合并手动输入状态（拨轮或Q/E有一个激活，就认为是手动控制阶段）
                     uint8_t current_manual_active = current_wheel_active || current_qe_active;
 
@@ -230,7 +255,7 @@ void chassis_task_func(void const * argument) {
 
                     // 步骤3：检测「拨轮」或「Q/E」的松开下降沿，触发回正（二选一触发，避免冲突）
                     uint8_t wheel_release_trigger = (last_wheel_active && !current_wheel_active && !current_qe_active);
-                    uint8_t qe_release_trigger = (last_qe_active && !current_qe_active && !current_wheel_active);
+                    uint8_t qe_release_trigger = (last_shift_active && !current_qe_active && !current_wheel_active);
                     if ((wheel_release_trigger || qe_release_trigger) && !yaw_align_enable) {
                         yaw_align_enable = 1; // 开启回正使能
                     }
@@ -258,7 +283,7 @@ void chassis_task_func(void const * argument) {
 
                     // 步骤5：更新上一帧状态记录（供下一帧边缘检测使用）
                     last_wheel_active = current_wheel_active;
-                    last_qe_active = current_qe_active;
+                    last_shift_active = current_qe_active;
 
                     robot_ctrl.chassis.yaw_speed = vw_final * CHASSIS_MAX_RAD;
 

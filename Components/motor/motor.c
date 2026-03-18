@@ -1375,61 +1375,59 @@ void DJI_Motor_Send_CAN1_Group(CAN_HandleTypeDef *hcan) {
 
 
     //依据超级电容是否断链给出来两种情况调用
-    if (verify_feedback_connection() == 1)
-    {
-        //开始加入功率分配
-        int16_t chassis_des[4][2] = {0}; // pid计算得到下发数据
-        int16_t chassis_fb[4][2]  = {0}; // 电调反馈数据
-        int16_t safe_current[4]   = {0}; // 巩固率重新分配后的数据
-        struct M3508_data *chassis_ptrs[4] = {NULL};
+    // if (verify_feedback_connection() == 1)
+    // {
+    //     //开始加入功率分配
+    //     int16_t chassis_des[4][2] = {0}; // pid计算得到下发数据
+    //     int16_t chassis_fb[4][2]  = {0}; // 电调反馈数据
+    //     int16_t safe_current[4]   = {0}; // 巩固率重新分配后的数据
+    //     struct M3508_data *chassis_ptrs[4] = {NULL};
+    //
+    //     /* 2. 组 0x200 帧：底盘 M3508 电机 (ID: 1, 2, 3, 4) */
+    //     for (int i = 0; i < 4; i++) {
+    //         char name[32];
+    //         sprintf(name, "M3508_CHASSIS_%d", i + 1);
+    //         struct motor_device *m = motor_get_device(name);
+    //
+    //         if (m && m->motor_data) {
+    //             chassis_ptrs[i] = (struct M3508_data *)m->motor_data;
+    //             // 获取刚刚pid得到的数据
+    //             chassis_des[i][0] = (chassis_ptrs[i]->enable_flag) ? chassis_ptrs[i]->_current_output : 0;
+    //             chassis_des[i][1] = chassis_ptrs[i]->VEL;
+    //
+    //             // 刚刚电机反馈得到的数据
+    //             chassis_fb[i][0] = chassis_ptrs[i]->CURRENT;
+    //             chassis_fb[i][1] = chassis_ptrs[i]->VEL;
+    //         }
+    //     }
+    //
+    //     // 进行封装
+    //     Power_Allocate_Config_t p_cfg = {
+    //         .target_energy     = 55.0f,  // 电容的目标剩余能量
+    //         .referee_power_max = 100.0f,  // 裁判系统给的最大功率
+    //         .max_power_limit   = 345.0f, // 最大功率
+    //         .min_power_limit   = 15.0f   // 最低功率
+    //     };
+    //
+    //     float real_power = real_power_feedback(); // 电容反馈计算得到的目前的真实功率
+    //
+    //     // 获取裁判系统剩余能量
+    //     float current_eng = robot_ctrl.gateway_referee_t.buffer_energy;
+    //
+    //     //调用功率分配接口
+    //     Chassis_Power_Control_Loop(chassis_des, chassis_fb, real_power, current_eng, &p_cfg, safe_current);
+    //
+    //
+    //     for (int i = 0; i < 4; i++) {
+    //         if (chassis_ptrs[i]) {
+    //             tx_200[i*2]   = (uint8_t)(safe_current[i] >> 8);
+    //             tx_200[i*2+1] = (uint8_t)(safe_current[i] & 0xFF);
+    //         }
+    //     }
+    //     header.StdId = 0x200;
+    //     HAL_CAN_AddTxMessage(hcan, &header, tx_200, &mailbox);
+    // }
 
-        /* 2. 组 0x200 帧：底盘 M3508 电机 (ID: 1, 2, 3, 4) */
-        for (int i = 0; i < 4; i++) {
-            char name[32];
-            sprintf(name, "M3508_CHASSIS_%d", i + 1);
-            struct motor_device *m = motor_get_device(name);
-
-            if (m && m->motor_data) {
-                chassis_ptrs[i] = (struct M3508_data *)m->motor_data;
-                // 获取刚刚pid得到的数据
-                chassis_des[i][0] = (chassis_ptrs[i]->enable_flag) ? chassis_ptrs[i]->_current_output : 0;
-                chassis_des[i][1] = chassis_ptrs[i]->VEL;
-
-                // 刚刚电机反馈得到的数据
-                chassis_fb[i][0] = chassis_ptrs[i]->CURRENT;
-                chassis_fb[i][1] = chassis_ptrs[i]->VEL;
-            }
-        }
-
-        // 进行封装
-        Power_Allocate_Config_t p_cfg = {
-            .target_energy     = 55.0f,  // 电容的目标剩余能量
-            .referee_power_max = 100.0f,  // 裁判系统给的最大功率
-            .max_power_limit   = 345.0f, // 最大功率
-            .min_power_limit   = 15.0f   // 最低功率
-        };
-
-        float real_power = real_power_feedback(); // 电容反馈计算得到的目前的真实功率
-
-        // 获取裁判系统剩余能量
-        float current_eng = robot_ctrl.gateway_referee_t.buffer_energy;
-
-        //调用功率分配接口
-        Chassis_Power_Control_Loop(chassis_des, chassis_fb, real_power, current_eng, &p_cfg, safe_current);
-
-
-        for (int i = 0; i < 4; i++) {
-            if (chassis_ptrs[i]) {
-                tx_200[i*2]   = (uint8_t)(safe_current[i] >> 8);
-                tx_200[i*2+1] = (uint8_t)(safe_current[i] & 0xFF);
-            }
-        }
-        header.StdId = 0x200;
-        HAL_CAN_AddTxMessage(hcan, &header, tx_200, &mailbox);
-    }
-
-    else
-    {
         /* 2. 组 0x200 帧：底盘 M3508 电机 (ID: 1, 2, 3, 4) */
         for (int i = 0; i < 4; i++) {
             char name[32];
@@ -1445,7 +1443,6 @@ void DJI_Motor_Send_CAN1_Group(CAN_HandleTypeDef *hcan) {
         }
         header.StdId = 0x200;
         HAL_CAN_AddTxMessage(hcan, &header, tx_200, &mailbox);
-    }
 
     /* 3. 组 0x1FF 帧：其他执行机构 (ID: 5, 6) */
     // 索引映射说明：i=0->ID 5(拨弹), i=1->ID 6(云台YAW)
@@ -1562,29 +1559,24 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
                 can_raw_101[i] = rx_data[i];
             }
 
-            // 利用位移操作，将大端序的 2 个 uint8 拼成 1 个 uint16
-            robot_ctrl.gateway_referee_t.current_HP               = (rx_data[0] << 8) | rx_data[1];
-            robot_ctrl.gateway_referee_t.shooter_17mm_barrel_heat = (rx_data[2] << 8) | rx_data[3];
-            robot_ctrl.gateway_referee_t.buffer_energy            = (rx_data[4] << 8) | rx_data[5];
-            robot_ctrl.gateway_referee_t.stage_remain_time        = (rx_data[6] << 8) | rx_data[7];
+            // 大端序逆向拼接 (高8位左移，与低8位进行或运算)
+            robot_ctrl.gateway_c_board.buffer_energy            = (uint16_t)((rx_data[0] << 8) | rx_data[1]);
+            robot_ctrl.gateway_c_board.shooter_17mm_barrel_heat = (uint16_t)((rx_data[2] << 8) | rx_data[3]);
+            robot_ctrl.gateway_c_board.capacity_voltage         = (int16_t)((rx_data[4] << 8) | rx_data[5]);
+            robot_ctrl.gateway_c_board.chassis_output_power     = (int16_t)((rx_data[6] << 8) | rx_data[7]);
+
         }
 
         // 拦截第二帧附加数据 0x102
         if (rx_header.StdId == 0x102) {
-
-            for(int i = 0; i < 8; i++) {
+            // 因为发送端 DLC 设置为 2，这里安全起见只按 DLC 长度读取
+            for(int i = 0; i < rx_header.DLC; i++) {
                 can_raw_102[i] = rx_data[i];
             }
 
-            robot_ctrl.gateway_referee_t.allow_bullet_17 = (rx_data[0] << 8) | rx_data[1];
-
-            // 逆向拆解 Byte 2
-            robot_ctrl.gateway_referee_t.armor_id             = (rx_data[2] >> 4) & 0x0F;
-            robot_ctrl.gateway_referee_t.HP_deducation_reason = rx_data[2] & 0x0F;
-
-            // 逆向拆解 Byte 3
-            robot_ctrl.gateway_referee_t.place_status  = (rx_data[3] >> 4) & 0x03;
-            robot_ctrl.gateway_referee_t.game_progress = rx_data[3] & 0x0F;
+            // 直接读取单字节数据
+            robot_ctrl.gateway_c_board.robot_id             = rx_data[0];
+            robot_ctrl.gateway_c_board.HP_deducation_reason = rx_data[1];
         }
 
         // 大疆 ID 范围解析

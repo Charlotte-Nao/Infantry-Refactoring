@@ -24,6 +24,18 @@ typedef enum {
     SHOOT_READY,         // 摩擦轮起旋
 } shoot_mode_e;
 
+typedef struct {
+    // 0x101 核心数据 (8字节)
+    uint16_t buffer_energy;            // 底盘缓冲能量
+    uint16_t shooter_17mm_barrel_heat; // 17mm当前热量
+    int16_t  capacity_voltage;         // 电容剩余电压
+    int16_t  chassis_output_power;     // 底盘实时输出功率
+
+    // 0x102 附加数据 (2字节)
+    uint8_t  robot_id;                 // 机器人ID
+    uint8_t  HP_deducation_reason;     // 扣血原因
+} gateway_c_board_t;
+
 /* --- 核心控制结构体 --- */
 
 typedef struct {
@@ -59,20 +71,8 @@ typedef struct {
     // ==========【新增核心】自瞄视觉数据 - 全局共享 ==========
     target_info_t target_info;   // 上位机下发的自瞄数据(valid,shoot,yaw,pitch)
 
-    struct {
-        // 0x101 核心数据
-        uint16_t current_HP;               // 当前血量
-        uint16_t shooter_17mm_barrel_heat; // 17mm当前热量
-        uint16_t buffer_energy;            // 底盘缓冲能量
-        uint16_t stage_remain_time;        // 比赛剩余时间
+    gateway_c_board_t gateway_c_board;
 
-        // 0x102 附加数据
-        uint16_t allow_bullet_17;          // 17mm允许发弹量
-        uint8_t  armor_id;                 // 受击装甲板ID
-        uint8_t  HP_deducation_reason;     // 扣血原因
-        uint8_t  place_status;             // 场地占用情况 (0~3)
-        uint8_t  game_progress;            // 比赛进度
-    } gateway_referee_t;
 
 } robot_ctrl_info_t;
 
