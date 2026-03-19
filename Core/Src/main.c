@@ -112,6 +112,9 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   bsp_can_init();
+  Robot_Global_Init();
+  Referee_Init();
+
   /* USER CODE END 2 */
 
   /* Call init function for freertos objects (in cmsis_os2.c) */

@@ -25,23 +25,23 @@ void analyze_from_supercapacitor_task_func(void const * argument)
         // 阻塞等待队列中的 CAN 数据，portMAX_DELAY 意味着没有数据时此任务完全不占用 CPU
         if (xQueueReceive(supercap_can_rx_queue, &rx_msg, portMAX_DELAY) == pdTRUE)
         {
-            /* 解析 0x301 数据包 
+            /* 解析 0x301 数据包
              * 默认两个 STM32 通讯为小端模式（低字节在前，高字节在后）
              * 按位移拼接比强制指针转换更安全，能避免结构体内存对齐引发的 Bug
              */
-             
+
             // 1. 电容剩余电压
             robot_ctrl.supercap.capacity_voltage = (int16_t)(rx_msg.data[1] << 8 | rx_msg.data[0]);
-            
+
             // 2. 底盘实时输出功率
             robot_ctrl.supercap.chassis_output_power = (int16_t)(rx_msg.data[3] << 8 | rx_msg.data[2]);
-            
+
             // 3. 电容实时充电功率
             robot_ctrl.supercap.cap_charge_power = (int16_t)(rx_msg.data[5] << 8 | rx_msg.data[4]);
-            
+
             // 4. 温度
             robot_ctrl.supercap.temperature = rx_msg.data[6];
-            
+
             // 5. 状态标志位
             robot_ctrl.supercap.status = rx_msg.data[7];
         }
