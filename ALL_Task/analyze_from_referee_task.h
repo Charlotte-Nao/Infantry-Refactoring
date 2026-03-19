@@ -95,7 +95,6 @@ void analyze_from_referee_task_func(void const * argument);
 void Referee_Init(void);
 void Referee_Data_Parse(uint8_t *rx_buf, uint16_t len);
 void Referee_Send_Packet(uint16_t cmd_id, uint8_t *data, uint16_t data_len);
-void Referee_Debug_Print(void);
-void Referee_CAN_Forward(void);
+
 
 #endif //INFANTRY_01_ANALYZE_FROM_REFEREE_TASK_H
