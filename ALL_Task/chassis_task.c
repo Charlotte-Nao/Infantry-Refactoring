@@ -29,9 +29,9 @@
 #define SHIFT_ACTIVE_THRESHOLD     0.01f     // Q/E有效输入阈值
 
 // 超级电容能量阈值 (单位: J)
-#define CAP_ENERGY_HIGH         1200
-#define CAP_ENERGY_MIDDLE       600
-#define CAP_ENERGY_LOW          200
+#define CAP_ENERGY_HIGH         20
+#define CAP_ENERGY_MIDDLE       15
+#define CAP_ENERGY_LOW          10
 
 
 /* --- 静态控制变量 --- */
@@ -89,43 +89,44 @@ void chassis_task_func(void const * argument) {
     while (1) {
         uint32_t current_tick = osKernelSysTick();
 
-        static uint32_t last_gateway_print_tick = 0;
-        if (current_tick - last_gateway_print_tick > 500) {
-            struct uart_device *uart1 = uart_get_device("uart1_dma");
-            if (uart1 != NULL) {
-                uart1->Print(uart1,
-                "====== MAIN BOARD CAN RX TEST ======\r\n"
-                " [Test] CAN_Cnt: %d \r\n"
-                " [RAW 101]: %02X %02X %02X %02X %02X %02X %02X %02X \r\n"
-                " [RAW 102]: %02X %02X \r\n"
-                "------------------------------------\r\n"
-                "  > Energy : Buf: %d J | Heat: %d \r\n"
-                "  > SuperCap: Vol: %d mV | Power: %d W \r\n"
-                "  > Status : RobotID: %d | Hurt_Reason: %d \r\n"
-                "====================================\r\n\r\n",
-                cnt,
-                // 打印 0x101 原始帧 (8字节)
-                can_raw_101[0], can_raw_101[1], can_raw_101[2], can_raw_101[3],
-                can_raw_101[4], can_raw_101[5], can_raw_101[6], can_raw_101[7],
-                // 打印 0x102 原始帧 (2字节)
-                can_raw_102[0], can_raw_102[1],
-                // 解析后的下位 C 板数据：
-                robot_ctrl.gateway_c_board.buffer_energy,
-                robot_ctrl.gateway_c_board.shooter_17mm_barrel_heat,
-                robot_ctrl.gateway_c_board.capacity_voltage,
-                robot_ctrl.gateway_c_board.chassis_output_power,
-                robot_ctrl.gateway_c_board.robot_id,
-                robot_ctrl.gateway_c_board.HP_deducation_reason
-                );
-            }
-            last_gateway_print_tick = current_tick;
-        }
+
+        // static uint32_t last_gateway_print_tick = 0;
+        // if (current_tick - last_gateway_print_tick > 500) {
+        //     struct uart_device *uart1 = uart_get_device("uart1_dma");
+        //     if (uart1 != NULL) {
+        //         uart1->Print(uart1,
+        //         "====== MAIN BOARD CAN RX TEST ======\r\n"
+        //         " [Test] CAN_Cnt: %d \r\n"
+        //         " [RAW 101]: %02X %02X %02X %02X %02X %02X %02X %02X \r\n"
+        //         " [RAW 102]: %02X %02X \r\n"
+        //         "------------------------------------\r\n"
+        //         "  > Energy : Buf: %d J | Heat: %d \r\n"
+        //         "  > SuperCap: Vol: %d mV | Power: %d W \r\n"
+        //         "  > Status : RobotID: %d | Hurt_Reason: %d \r\n"
+        //         "====================================\r\n\r\n",
+        //         cnt,
+        //         // 打印 0x101 原始帧 (8字节)
+        //         can_raw_101[0], can_raw_101[1], can_raw_101[2], can_raw_101[3],
+        //         can_raw_101[4], can_raw_101[5], can_raw_101[6], can_raw_101[7],
+        //         // 打印 0x102 原始帧 (2字节)
+        //         can_raw_102[0], can_raw_102[1],
+        //         // 解析后的下位 C 板数据：
+        //         robot_ctrl.gateway_c_board.buffer_energy,
+        //         robot_ctrl.gateway_c_board.shooter_17mm_barrel_heat,
+        //         robot_ctrl.gateway_c_board.capacity_voltage,
+        //         robot_ctrl.gateway_c_board.chassis_output_power,
+        //         robot_ctrl.gateway_c_board.robot_id,
+        //         robot_ctrl.gateway_c_board.HP_deducation_reason
+        //         );
+        //     }
+        //     last_gateway_print_tick = current_tick;
+        // }
 
         /**************************************************************************************************************/
         // 遥控器掉线检测
         if (current_tick - rc->vt13.last_update_tick > 200) {
             robot_ctrl.monitor.remote_online = 0;
-            robot_ctrl.chassis_mode = CHASSIS_RELAX;
+            //robot_ctrl.chassis_mode = CHASSIS_RELAX;
 
             // 掉线时重置所有标志和保存的速度
             yaw_align_enable = 0;
@@ -185,7 +186,7 @@ void chassis_task_func(void const * argument) {
                     float speed_ratio;
 
                     // 获取下位 C 板转发的超级电容剩余能量
-                    uint16_t cap_energy = robot_ctrl.gateway_c_board.buffer_energy;
+                    uint16_t cap_energy = robot_ctrl.gateway_c_board.capacity_voltage;
 
                     // 依据电容能量动态分配速度倍率
                     if (cap_energy > CAP_ENERGY_HIGH) {
