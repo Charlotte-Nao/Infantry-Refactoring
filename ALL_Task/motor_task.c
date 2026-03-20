@@ -82,6 +82,17 @@ void motor_task_func(void const * argument) {
         // 达妙电机（Pitch轴）使用专用协议帧发送
         if(pitch) pitch->send_ctrl_cmd(pitch);
 
+        // 检查 CAN2 硬件邮箱是否被堵死 (证明 CAN2 物理总线断开或无响应)
+        static uint32_t can2_err_tick = 0;
+        if (HAL_CAN_GetTxMailboxesFreeLevel(&hcan2) == 0) {
+            uint32_t tick = osKernelSysTick();
+            if (tick - can2_err_tick > 1000) { // 每秒打印一次报错
+                struct uart_device* Uart = uart_get_device("uart1_dma");
+                if(Uart) Uart->Print(Uart, "[ERROR] CAN2 TX Mailbox FULL! Check CAN2 Hardware & Power!\r\n");
+                can2_err_tick = tick;
+            }
+        }
+
         osDelay(1);
     }
 }

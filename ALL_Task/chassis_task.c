@@ -9,6 +9,7 @@
 #include "../Bsp/LED/bsp_LED.h"
 #include "../Application/auto_aim.h"
 #include  "../ALL_Task/gimbal_task.h"
+#include "../Bsp/uart/bsp_uart.h"
 
 /* --- 逻辑常量与控制参数 --- */
 #define GIMBAL_YAW_SENS         0.010f
@@ -17,7 +18,7 @@
 #define MOUSE_PIT_SENS          0.0002f  // 鼠标纵向灵敏度
 #define FOLLOW_P_GAIN           0.5f
 #define RC_DEADZONE             10
-#define YAW_CENTER_OFFSET       1.9f//-0.13f（步兵） //1.9f（哨兵）
+#define YAW_CENTER_OFFSET       -1.68f//-0.13f（步兵） //1.9f（哨兵）
 
 // 底盘几何参数配置
 #define MOTOR_RPM_TO_VECTOR     3000.0f
@@ -28,9 +29,10 @@
 #define WHEEL_ACTIVE_THRESHOLD  0.01f    // 拨轮有效输入阈值
 #define SHIFT_ACTIVE_THRESHOLD     0.01f     // Q/E有效输入阈值
 
-// 超级电容能量阈值 (单位: J)
+// 超级电容能量阈值 (单位: V)
 #define CAP_ENERGY_HIGH         20
 #define CAP_ENERGY_MIDDLE       15
+
 #define CAP_ENERGY_LOW          10
 
 
@@ -242,6 +244,11 @@ void chassis_task_func(void const * argument) {
                     float yaw_m_pos;
                     yaw_m->get_status(yaw_m, "POS", &yaw_m_pos);
                     float angle_error = Rad_Format(yaw_m_pos - YAW_CENTER_OFFSET);
+
+                    //用于调零打印输出
+                    // struct uart_device *uart1 = uart_get_device("uart1_dma");
+                    // uart1->Print(uart1, "angle_error:  %.3f   yaw_m_pose: %.3f \r\n",
+                    //     angle_error,yaw_m_pos);
 
                     // 步骤1：判断当前拨轮、Q/E是否处于激活状态
                     uint8_t current_wheel_active = (fabsf(vw_rc) > WHEEL_ACTIVE_THRESHOLD) ? 1 : 0;
