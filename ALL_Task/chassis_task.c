@@ -30,10 +30,10 @@
 #define SHIFT_ACTIVE_THRESHOLD     0.01f     // Q/E有效输入阈值
 
 // 超级电容能量阈值 (单位: V)
-#define CAP_ENERGY_HIGH         20
-#define CAP_ENERGY_MIDDLE       15
+#define CAP_ENERGY_HIGH         2000
+#define CAP_ENERGY_MIDDLE       1500
 
-#define CAP_ENERGY_LOW          10
+#define CAP_ENERGY_LOW          1000
 
 
 /* --- 静态控制变量 --- */
@@ -92,37 +92,37 @@ void chassis_task_func(void const * argument) {
         uint32_t current_tick = osKernelSysTick();
 
 
-        static uint32_t last_gateway_print_tick = 0;
-        if (current_tick - last_gateway_print_tick > 500) {
-            struct uart_device *uart1 = uart_get_device("uart1_dma");
-            if (uart1 != NULL) {
-                uart1->Print(uart1,
-                "====== MAIN BOARD CAN RX TEST ======\r\n"
-                " [Test] CAN_Cnt: %d \r\n"
-                " [RAW 101]: %02X %02X %02X %02X %02X %02X %02X %02X \r\n"
-                " [RAW 102]: %02X %02X \r\n"
-                "------------------------------------\r\n"
-                "  > Energy : Buf: %d J | Heat: %d \r\n"
-                "  > SuperCap: Vol: %d mV | Power: %d W \r\n"
-                "  > Status : RobotID: %d | Hurt_Reason: %d \r\n"
-                "====================================\r\n\r\n",
-                cnt,
-                // 打印 0x101 原始帧 (8字节)
-                can_raw_101[0], can_raw_101[1], can_raw_101[2], can_raw_101[3],
-                can_raw_101[4], can_raw_101[5], can_raw_101[6], can_raw_101[7],
-                // 打印 0x102 原始帧 (2字节)
-                can_raw_102[0], can_raw_102[1],
-                // 解析后的下位 C 板数据：
-                robot_ctrl.gateway_c_board.buffer_energy,
-                robot_ctrl.gateway_c_board.shooter_17mm_barrel_heat,
-                robot_ctrl.gateway_c_board.capacity_voltage,
-                robot_ctrl.gateway_c_board.chassis_output_power,
-                robot_ctrl.gateway_c_board.robot_id,
-                robot_ctrl.gateway_c_board.HP_deducation_reason
-                );
-            }
-            last_gateway_print_tick = current_tick;
-        }
+        // static uint32_t last_gateway_print_tick = 0;
+        // if (current_tick - last_gateway_print_tick > 500) {
+        //     struct uart_device *uart1 = uart_get_device("uart1_dma");
+        //     if (uart1 != NULL) {
+        //         uart1->Print(uart1,
+        //         "====== MAIN BOARD CAN RX TEST ======\r\n"
+        //         " [Test] CAN_Cnt: %d \r\n"
+        //         " [RAW 101]: %02X %02X %02X %02X %02X %02X %02X %02X \r\n"
+        //         " [RAW 102]: %02X %02X \r\n"
+        //         "------------------------------------\r\n"
+        //         "  > Energy : Buf: %d J | Heat: %d \r\n"
+        //         "  > SuperCap: Vol: %d mV | Power: %d W \r\n"
+        //         "  > Status : RobotID: %d | Hurt_Reason: %d \r\n"
+        //         "====================================\r\n\r\n",
+        //         cnt,
+        //         // 打印 0x101 原始帧 (8字节)
+        //         can_raw_101[0], can_raw_101[1], can_raw_101[2], can_raw_101[3],
+        //         can_raw_101[4], can_raw_101[5], can_raw_101[6], can_raw_101[7],
+        //         // 打印 0x102 原始帧 (2字节)
+        //         can_raw_102[0], can_raw_102[1],
+        //         // 解析后的下位 C 板数据：
+        //         robot_ctrl.gateway_c_board.buffer_energy,
+        //         robot_ctrl.gateway_c_board.shooter_17mm_barrel_heat,
+        //         robot_ctrl.gateway_c_board.capacity_voltage,
+        //         robot_ctrl.gateway_c_board.chassis_output_power,
+        //         robot_ctrl.gateway_c_board.robot_id,
+        //         robot_ctrl.gateway_c_board.HP_deducation_reason
+        //         );
+        //     }
+        //     last_gateway_print_tick = current_tick;
+        // }
 
         /**************************************************************************************************************/
         // 遥控器掉线检测
@@ -195,11 +195,11 @@ void chassis_task_func(void const * argument) {
                     //     speed_ratio = 1.5f;       // 满电爆发模式
                     // } else
                     if (cap_energy > CAP_ENERGY_MIDDLE) {
-                        speed_ratio = 1.0f;       // 正常作战模式
+                        speed_ratio = 1.2f;       // 正常作战模式
                     } else if (cap_energy > CAP_ENERGY_LOW) {
-                        speed_ratio = 0.7f;       // 节流模式
+                        speed_ratio = 1.0f;       // 节流模式
                     } else {
-                        speed_ratio = 0.5f;       // 苟命模式，防止断电
+                        speed_ratio = 0.6f;       // 苟命模式，防止断电
                     }
                     if (KEY_PRESSED(rc->vt13.key_vt13.v, KEY_VT13_SHIFT)) {
                         speed_ratio = 1.5f;
