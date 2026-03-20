@@ -23,6 +23,7 @@ static void Send_To_C_Board_CAN_Forward(void)
     // ========================================================
     robot_ctrl.gateway_c_board.buffer_energy = robot_ctrl.referee_info.power_heat_data.buffer_energy;
     robot_ctrl.gateway_c_board.shooter_17mm_barrel_heat = robot_ctrl.referee_info.power_heat_data.shooter_17mm_barrel_heat;
+
     robot_ctrl.gateway_c_board.capacity_voltage = robot_ctrl.supercap.capacity_voltage;
     robot_ctrl.gateway_c_board.chassis_output_power = robot_ctrl.supercap.chassis_output_power;
 

@@ -29,29 +29,27 @@ void send_to_referee_task_func(void const * argument)
 
     for(;;)
     {
-        robot_ctrl.gateway_c_board.capacity_voltage = 1 ;
-        robot_ctrl.gateway_c_board.chassis_output_power = 2;
-        // 3. 检查设备是否成功获取，并周期性调用其内部的 Print 函数
-        if (uart1 != NULL && uart1->Print != NULL) {
-
-            // 打印我们刚刚在 send_to_C_board_task 中打包好的网关数据
-            uart1->Print(uart1,
-                "========== GATEWAY TO C-BOARD ==========\r\n"
-                " [Robot ID] : %d\r\n"
-                " [Buffer]   : %d J\r\n"
-                " [Heat 17]  : %d\r\n"
-                " [Cap Volt] : %d (x100 V)\r\n"
-                " [Chassis P]: %d (x10 W)\r\n"
-                " [Hurt Rsn] : %d\r\n"
-                "========================================\r\n\r\n",
-                robot_ctrl.gateway_c_board.robot_id,
-                robot_ctrl.gateway_c_board.buffer_energy,
-                robot_ctrl.gateway_c_board.shooter_17mm_barrel_heat,
-                robot_ctrl.gateway_c_board.capacity_voltage,
-                robot_ctrl.gateway_c_board.chassis_output_power,
-                robot_ctrl.gateway_c_board.HP_deducation_reason
-            );
-        }
+        // // 3. 检查设备是否成功获取，并周期性调用其内部的 Print 函数
+        // if (uart1 != NULL && uart1->Print != NULL) {
+        //
+        //     // 打印我们刚刚在 send_to_C_board_task 中打包好的网关数据
+        //     uart1->Print(uart1,
+        //         "========== GATEWAY TO C-BOARD ==========\r\n"
+        //         " [Robot ID] : %d\r\n"
+        //         " [Buffer]   : %d J\r\n"
+        //         " [Heat 17]  : %d\r\n"
+        //         " [Cap Volt] : %d (x100 V)\r\n"
+        //         " [Chassis P]: %d (x10 W)\r\n"
+        //         " [Hurt Rsn] : %d\r\n"
+        //         "========================================\r\n\r\n",
+        //         robot_ctrl.gateway_c_board.robot_id,
+        //         robot_ctrl.gateway_c_board.buffer_energy,
+        //         robot_ctrl.gateway_c_board.shooter_17mm_barrel_heat,
+        //         robot_ctrl.gateway_c_board.capacity_voltage,
+        //         robot_ctrl.gateway_c_board.chassis_output_power,
+        //         robot_ctrl.gateway_c_board.HP_deducation_reason
+        //     );
+        // }
 
         // 延时 500 毫秒，即 2Hz 打印频率。
         osDelay(500);
