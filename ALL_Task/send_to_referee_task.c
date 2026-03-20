@@ -1,17 +1,14 @@
 #include "send_to_referee_task.h"
-// 【修改点 1】引入你真实的全局结构体和底层解析任务
 #include "../Application/robot_global.h"
 #include "../ALL_Task/analyze_from_referee_task.h"
 #include "../Application/referee.h"
 
-// 【修改点 2】引入你的 BSP 串口打印文件
 #include "../Bsp/uart/bsp_uart.h"
 
 #include "cmsis_os.h"
 #include <string.h>
 
 /* ==================== 高级自定义中置 UI 宏定义 ==================== */
-/* ==================== UI 布局宏定义 ==================== */
 #define UI_SEND_PERIOD_MS            100U
 #define UI_HIT_HIGHLIGHT_MS          300U
 #define UI_CAP_VOLTAGE_MIN_X100      0
@@ -33,12 +30,18 @@
 #define UI_CAR_X1                    970U
 #define UI_CAR_Y1                    550U
 
-//受击位置布局
+// 受击位置布局
 #define UI_HURT_DISTANCE             250U
 #define UI_HURT_LENGTH               100U
 #define UI_HURT_WIDTH                4U
 
-// 声明在 analyze_from_referee_task.c 中的串口接收计数器，用于调试
+// ==================== 【新增】弹道下落标线布局 ====================
+// RM 坐标系左下角为 (0,0)，所以向下延伸 Y 值要减小
+#define UI_DROP_LINE_START_Y         450U  // 起点高度 (紧贴在准星框的下方)
+#define UI_DROP_LINE_END_Y           460U  // 终点高度 (向下延伸 50 个像素)
+#define UI_DROP_LINE_WIDTH           2U    // 标线的粗细
+
+
 extern uint32_t uart6_rx_count;
 
 static uint16_t clamp_u16(int32_t v, uint16_t lo, uint16_t hi) {
@@ -200,14 +203,13 @@ void send_to_referee_task_func(void const * argument) {
                         status_drawn_once = 1U;
 
                     } else {
-                        // 【PACK 1：巨型中置装甲受击框】
+                        // 【PACK 1：巨型中置装甲受击框 + 弹道参考线】
                         uint16_t cx = SCREEN_CENTER_X;
                         uint16_t cy = SCREEN_CENTER_Y;
 
-                        // ========== 尺寸放大参数 ==========
-                        uint16_t out = UI_HURT_DISTANCE ;   // 偏移半径: 控制受击框离中心有多远 (以前只有25)
-                        uint16_t len = UI_HURT_LENGTH ;   // 线条半长: 控制每条受击线段有多长 (以前只有30)
-                        uint16_t thick = UI_HURT_WIDTH ;  // 线条粗细: 让受击警告极度显眼 (以前只有5)
+                        uint16_t out = UI_HURT_DISTANCE;
+                        uint16_t len = UI_HURT_LENGTH;
+                        uint16_t thick = UI_HURT_WIDTH;
 
                         make_line(&armor_figs5[0], 'A', 'F', '0', op_armor, armor_color_by_tick(now, armor_hit_tick[0]),
                                   cx - len, cy + out, cx + len, cy + out, thick); // 前 (上方)
@@ -218,8 +220,9 @@ void send_to_referee_task_func(void const * argument) {
                         make_line(&armor_figs5[3], 'A', 'R', '0', op_armor, armor_color_by_tick(now, armor_hit_tick[3]),
                                   cx + out, cy - len, cx + out, cy + len, thick); // 右 (右方)
 
-                        // 占位图形，填满5个
-                        make_line(&armor_figs5[4], 'A', 'D', '0', op_armor, REF_UI_COLOR_GREEN, cx, cy, cx + 1U, cy + 1U, 1U);
+                        // 【修改点】用弹道下落参考线替换掉原来的无用占位符！
+                        make_line(&armor_figs5[4], 'D', 'R', 'P', op_armor, REF_UI_COLOR_CYAN,
+                                  cx, UI_DROP_LINE_START_Y, cx, UI_DROP_LINE_END_Y, UI_DROP_LINE_WIDTH);
 
                         Referee_UI_Draw5(sender_id, receiver_id, armor_figs5);
                         armor_drawn_once = 1U;
