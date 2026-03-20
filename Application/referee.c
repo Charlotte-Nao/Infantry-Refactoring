@@ -1,11 +1,13 @@
 //
-// Created by Gemini on 2026/3/20.
+// 纯净版 UI 打包层 (referee.c)
 //
 
 #include "referee.h"
-#include "analyze_from_referee_task.h" // 引入底层发送函数 Referee_Send_Packet
+// 引入你的底层发送函数 Referee_Send_Packet
+#include "../ALL_Task/analyze_from_referee_task.h"
 #include <string.h>
 
+// ======================== 客户端 ID 转换 ========================
 // 获取对应的操作手客户端 ID (一般是机器人 ID + 0x0100)
 uint16_t Referee_Get_ClientId_By_RobotId(uint16_t robot_id)
 {
@@ -16,7 +18,8 @@ uint16_t Referee_Get_ClientId_By_RobotId(uint16_t robot_id)
     return 0; // 无效或不需要选手端的机器人
 }
 
-// 核心打包函数：拼接 6 字节的数据段头，并调用你的底层发送函数
+// ======================== 底层发送对接 ========================
+// 核心打包函数：拼接 6 字节的数据段头，并调用你原本写好的底层 DMA 发送函数
 static uint8_t Referee_Send_Interactive(uint16_t data_cmd_id, uint16_t sender_id, uint16_t receiver_id, const uint8_t *data, uint16_t data_len)
 {
     // 数据段最大 112 字节，加上 6 字节的内容段头 = 118 字节
@@ -37,13 +40,15 @@ static uint8_t Referee_Send_Interactive(uint16_t data_cmd_id, uint16_t sender_id
         memcpy(&payload[6], data, data_len);
     }
 
-    // 0x0301 是机器人间交互数据的命令码
+    // 调用你在 analyze_from_referee_task.c 中写好的发送函数
+    // 0x0301 是官方规定的“机器人间交互数据”命令码
     Referee_Send_Packet(0x0301, payload, 6 + data_len);
 
     return 1;
 }
 
-// 将 13 字节的易读结构体，压缩位域到 15 字节的 RM 协议包
+// ======================== 位域压缩计算 ========================
+// 将 13 字节的易读结构体，按官方协议位域要求压缩到 15 字节
 static void Referee_UI_Pack_Figure15(uint8_t out15[15], const interaction_figure_param_t *in)
 {
     if (!out15 || !in) return;
@@ -52,7 +57,6 @@ static void Referee_UI_Pack_Figure15(uint8_t out15[15], const interaction_figure
     out15[1] = in->figure_name[1];
     out15[2] = in->figure_name[2];
 
-    // 位域压缩
     uint32_t cfg1 = (in->operate_type & 0x07) |
                     ((in->figure_type & 0x07) << 3) |
                     ((in->layer & 0x0F) << 6) |
@@ -68,7 +72,6 @@ static void Referee_UI_Pack_Figure15(uint8_t out15[15], const interaction_figure
                     ((in->details_d & 0x07FF) << 10) |
                     ((in->details_e & 0x07FF) << 21);
 
-    // 采用 memcpy 避免内存对齐错误
     memcpy(&out15[3], &cfg1, 4);
     memcpy(&out15[7], &cfg2, 4);
     memcpy(&out15[11], &cfg3, 4);

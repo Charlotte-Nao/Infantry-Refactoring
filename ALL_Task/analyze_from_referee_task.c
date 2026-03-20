@@ -257,19 +257,46 @@ void Referee_Data_Parse(uint8_t *rx_buf, uint16_t len) {
 }
 
 // 主动发送函数，补全双向通信环路
+// void Referee_Send_Packet(uint16_t cmd_id, uint8_t *data, uint16_t data_len) {
+//     uint16_t frame_len = data_len + 9;
+//     if (frame_len > 256) return; // 防止越界
+//
+//     uint32_t wait_timeout = 0;
+//     while (huart6.gState != HAL_UART_STATE_READY) {
+//         osDelay(1); // 挂起 1ms，不占用系统资源
+//         wait_timeout++;
+//         if (wait_timeout > 50) {
+//             // 超时 10ms DMA 依然被占用，直接丢弃本包数据，保护后续逻辑
+//             return;
+//         }
+//     }
+//
+//     // 1. 填充帧头
+//     ref_tx_buf[0] = REF_HEADER_SOF;
+//     ref_tx_buf[1] = data_len & 0xFF;
+//     ref_tx_buf[2] = (data_len >> 8) & 0xFF;
+//     ref_tx_buf[3] = tx_seq++;
+//
+//     // 2. 追加帧头 CRC8 (传参 5，官方库算前 4 位写入第 5 位)
+//     Append_CRC8_Check_Sum(ref_tx_buf, 5);
+//
+//     // 3. 填充 CMD ID
+//     ref_tx_buf[5] = cmd_id & 0xFF;
+//     ref_tx_buf[6] = (cmd_id >> 8) & 0xFF;
+//
+//     // 4. 填充数据段
+//     memcpy(&ref_tx_buf[7], data, data_len);
+//
+//     // 5. 追加整帧 CRC16
+//     Append_CRC16_Check_Sum(ref_tx_buf, frame_len);
+//
+//     // 6. 使用 DMA 阻塞/非阻塞发送
+//     HAL_UART_Transmit_DMA(&huart6, ref_tx_buf, frame_len);
+// }
+// 主动发送函数，补全双向通信环路
 void Referee_Send_Packet(uint16_t cmd_id, uint8_t *data, uint16_t data_len) {
     uint16_t frame_len = data_len + 9;
     if (frame_len > 256) return; // 防止越界
-
-    uint32_t wait_timeout = 0;
-    while (huart6.gState != HAL_UART_STATE_READY) {
-        osDelay(1); // 挂起 1ms，不占用系统资源
-        wait_timeout++;
-        if (wait_timeout > 10) {
-            // 超时 10ms DMA 依然被占用，直接丢弃本包数据，保护后续逻辑
-            return;
-        }
-    }
 
     // 1. 填充帧头
     ref_tx_buf[0] = REF_HEADER_SOF;
@@ -277,7 +304,7 @@ void Referee_Send_Packet(uint16_t cmd_id, uint8_t *data, uint16_t data_len) {
     ref_tx_buf[2] = (data_len >> 8) & 0xFF;
     ref_tx_buf[3] = tx_seq++;
 
-    // 2. 追加帧头 CRC8 (传参 5，官方库算前 4 位写入第 5 位)
+    // 2. 追加帧头 CRC8
     Append_CRC8_Check_Sum(ref_tx_buf, 5);
 
     // 3. 填充 CMD ID
@@ -285,13 +312,16 @@ void Referee_Send_Packet(uint16_t cmd_id, uint8_t *data, uint16_t data_len) {
     ref_tx_buf[6] = (cmd_id >> 8) & 0xFF;
 
     // 4. 填充数据段
-    memcpy(&ref_tx_buf[7], data, data_len);
+    if (data != NULL && data_len > 0) {
+        memcpy(&ref_tx_buf[7], data, data_len);
+    }
 
     // 5. 追加整帧 CRC16
     Append_CRC16_Check_Sum(ref_tx_buf, frame_len);
 
-    // 6. 使用 DMA 阻塞/非阻塞发送
-    HAL_UART_Transmit_DMA(&huart6, ref_tx_buf, frame_len);
+    // 6. 放弃 DMA，直接使用阻塞发送，超时时间设为 100ms
+    // 115200 波特率发 100 字节仅需 8ms，完全不会卡死 RTOS 任务，且绝对稳定！
+    HAL_UART_Transmit(&huart6, ref_tx_buf, frame_len, 100);
 }
 
 
