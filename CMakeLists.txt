@@ -62,6 +62,8 @@ add_executable(${CMAKE_PROJECT_NAME}
         ALL_Task/analyze_from_referee_task.h
         ALL_Task/analyze_from_supercapacitor_task.c
         ALL_Task/analyze_from_supercapacitor_task.h
+        Application/referee.c
+        Application/referee.h
 )
 
 # Add STM32CubeMX generated sources
