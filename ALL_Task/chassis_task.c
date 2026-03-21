@@ -202,7 +202,7 @@ void chassis_task_func(void const * argument) {
                         speed_ratio = 0.6f;       // 苟命模式，防止断电
                     }
                     if (KEY_PRESSED(rc->vt13.key_vt13.v, KEY_VT13_SHIFT)) {
-                        speed_ratio = 1.5f;
+                        speed_ratio = 2.0f;
                     }
 
                     if (KEY_PRESSED(rc->vt13.key_vt13.v, KEY_VT13_W)) vy_kb += speed_ratio;

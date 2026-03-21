@@ -74,6 +74,7 @@ add_executable(${CMAKE_PROJECT_NAME}
         Bsp/RLS/RLS.h
         Application/power_reallocate.c
         Application/power_reallocate.h
+        ALL_Task/chassis_task.c
 )
 
 # Add STM32CubeMX generated sources
