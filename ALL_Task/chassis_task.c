@@ -37,11 +37,19 @@
 #define CHASSIS_SPEED_GEAR_MID   1.2f  // 正常作战速度倍率
 #define CHASSIS_SPEED_GEAR_HIGH  2.0f  // Shift 爆发速度倍率
 
+// ===================== 底盘渐加速参数（单位：归一化速度/秒） =====================
+#define CHASSIS_VX_ACCEL_UP      2.2f  // X轴加速斜率
+#define CHASSIS_VX_ACCEL_DOWN    4.2f  // X轴刹车斜率（更大，保证刹得住）
+#define CHASSIS_VY_ACCEL_UP      2.2f  // Y轴加速斜率
+#define CHASSIS_VY_ACCEL_DOWN    4.2f  // Y轴刹车斜率
+#define CHASSIS_VW_ACCEL_UP      2.5f  // 旋转加速斜率
+#define CHASSIS_VW_ACCEL_DOWN    5.0f  // 旋转刹车斜率
 
 /* --- 静态控制变量 --- */
 static float world_yaw_target = 0.0f;
 static float world_pit_target = 0.0f;
 static float vx_ramp = 0.0f, vy_ramp = 0.0f;
+static float vw_ramp = 0.0f;                 // 自转渐加速状态保存
 static uint8_t cap_low_gear_lock = 0;    // 超级电容低压锁档（滞回状态标志）
 
 static uint32_t last_rc_tick = 0;
@@ -66,6 +74,27 @@ static float Rad_Format(float angle) {
     return angle;
 }
 
+/***********************************************************************************************************************
+* 函数名：Chassis_Slew_Limit (斜坡限幅函数)
+* 功  能：限制输入变量的变化率，实现渐加速/急刹车分离
+***********************************************************************************************************************/
+static float Chassis_Slew_Limit(float target, float current, float accel_up, float accel_down, float dt_s)
+{
+    float delta = target - current;
+    float max_step;
+
+    // 反向或减速时用更大的下坡斜率，保证松手后不拖沓
+    if ((target * current < 0.0f) || (fabsf(target) < fabsf(current))) {
+        max_step = accel_down * dt_s;
+    } else {
+        max_step = accel_up * dt_s;
+    }
+
+    if (delta > max_step) delta = max_step;
+    if (delta < -max_step) delta = -max_step;
+    return current + delta;
+}
+
 void chassis_task_func(void const * argument) {
     /******************************************************************************************************************/
     /* 初始化 */
@@ -83,6 +112,8 @@ void chassis_task_func(void const * argument) {
     static uint8_t last_ctrl_cmd = 0;
     static uint8_t last_b_cmd = 0;
     float wheel_targets[4] = {0};
+    // 用于计算精确的 dt 控制斜坡函数
+    static uint32_t last_ctrl_tick = 0U;
 
     /******************************************************************************************************************/
     // 系统启动保护
@@ -94,6 +125,15 @@ void chassis_task_func(void const * argument) {
     while (1) {
         uint32_t current_tick = osKernelSysTick();
 
+        // 计算精确的 dt_s (系统调度周期，正常约为0.002s)
+        float dt_s = 0.002f;
+        if (last_ctrl_tick != 0U) {
+            uint32_t dt_ms = (uint32_t)(current_tick - last_ctrl_tick);
+            if (dt_ms == 0U) dt_ms = 1U;
+            if (dt_ms > 20U) dt_ms = 20U;
+            dt_s = (float)dt_ms * 0.001f;
+        }
+        last_ctrl_tick = current_tick;
 
         // static uint32_t last_gateway_print_tick = 0;
         // if (current_tick - last_gateway_print_tick > 500) {
@@ -145,6 +185,11 @@ void chassis_task_func(void const * argument) {
             auto_spin_enable = 0;
             last_r_pressed = 0;
             last_g_pressed = 0;
+            // 安全防护：掉线清零斜坡状态！
+            vx_ramp = 0.0f;
+            vy_ramp = 0.0f;
+            vw_ramp = 0.0f;
+
         } else {
             robot_ctrl.monitor.remote_online = 1;
             /**********************************************************************************************************/
@@ -173,6 +218,11 @@ void chassis_task_func(void const * argument) {
                 auto_spin_enable = 0;
                 last_r_pressed = 0;
                 last_g_pressed = 0;
+                // 安全防护：失能清零斜坡状态，防下次开启时“起飞”！
+                vx_ramp = 0.0f;
+                vy_ramp = 0.0f;
+                vw_ramp = 0.0f;
+
             }
 
             last_ctrl_cmd = ctrl_cmd;
@@ -256,6 +306,10 @@ void chassis_task_func(void const * argument) {
                         total_vx = total_vx / v_norm * speed_ratio;
                         total_vy = total_vy / v_norm * speed_ratio;
                     }
+                    // === 新增：C. 平移渐加速 / 减速限制 ===
+                    vx_ramp = Chassis_Slew_Limit(total_vx, vx_ramp, CHASSIS_VX_ACCEL_UP, CHASSIS_VX_ACCEL_DOWN, dt_s);
+                    vy_ramp = Chassis_Slew_Limit(total_vy, vy_ramp, CHASSIS_VY_ACCEL_UP, CHASSIS_VY_ACCEL_DOWN, dt_s);
+
 
                     // --- C. 跟随与旋转逻辑（扩展：Q/E+拨轮统一回正）---
                     float yaw_m_pos;
@@ -305,6 +359,10 @@ void chassis_task_func(void const * argument) {
                         // 正常跟随阶段：原有的云台跟随逻辑
                         vw_final = -angle_error * FOLLOW_P_GAIN;
                     }
+                    // === 新增：旋转渐加速 / 减速限制 ===
+                    vw_ramp = Chassis_Slew_Limit(vw_final, vw_ramp, CHASSIS_VW_ACCEL_UP, CHASSIS_VW_ACCEL_DOWN, dt_s);
+                    vw_final = vw_ramp; // 将滤波后的速度赋给最终执行变量
+
 
                     // 步骤5：更新上一帧状态记录（供下一帧边缘检测使用）
                     last_wheel_active = current_wheel_active;
@@ -312,10 +370,9 @@ void chassis_task_func(void const * argument) {
 
                     robot_ctrl.chassis.yaw_speed = vw_final * CHASSIS_MAX_RAD;
 
-                    // --- D. 随动坐标系变换 ---
-                    float final_vx = total_vx * cosf(angle_error) - total_vy * sinf(angle_error);
-                    float final_vy = total_vx * sinf(angle_error) + total_vy * cosf(angle_error);
-
+                    // --- D. 随动坐标系变换 (使用滤波后的 vx_ramp / vy_ramp) ---
+                    float final_vx = vx_ramp * cosf(angle_error) - vy_ramp * sinf(angle_error);
+                    float final_vy = vx_ramp * sinf(angle_error) + vy_ramp * cosf(angle_error);
                     // --- E. 逆运动学计算 ---
                     wheel_targets[0] = (final_vx + final_vy - vw_final) * MOTOR_RPM_TO_VECTOR;
                     wheel_targets[1] = (final_vx - final_vy - vw_final) * MOTOR_RPM_TO_VECTOR;
@@ -327,9 +384,18 @@ void chassis_task_func(void const * argument) {
                     }
                 }
             }
+            else {   // <--- 【补充1】：云台在线，但底盘处于 RELAX (失能) 状态
+                vx_ramp = 0.0f;
+                vy_ramp = 0.0f;
+                vw_ramp = 0.0f;
+            }
         }
         else {
             // 遥控器掉线：红灯快闪
+            // <--- 【补充2】：彻底掉线状态，持续清零
+            vx_ramp = 0.0f;
+            vy_ramp = 0.0f;
+            vw_ramp = 0.0f;
             osDelay(100);
         }
 
