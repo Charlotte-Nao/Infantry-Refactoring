@@ -1292,10 +1292,10 @@ static void All_Motors_Init(void) {
                     0.0,      /* P_Ki */
                     300.0,    /* V_Kp */
                     0.0,      /* V_Ki */
-                    0.0,      /* V_Kd */
+                    2.5,      /* V_Kd */
                     25000.0,   /* Out_Max */
                     320.0,     /* V_Limit */
-                    1.0,      /* Alpha */
+                    0.5,      /* Alpha */
                     300.0    /* V Only Kp */
     );
 

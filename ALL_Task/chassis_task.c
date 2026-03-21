@@ -29,17 +29,20 @@
 #define WHEEL_ACTIVE_THRESHOLD  0.01f    // 拨轮有效输入阈值
 #define SHIFT_ACTIVE_THRESHOLD     0.01f     // Q/E有效输入阈值
 
-// 超级电容能量阈值 (单位: V)
-#define CAP_ENERGY_HIGH         2000
-#define CAP_ENERGY_MIDDLE       1500
+// ===================== 超级电容与速度档位控制（滞回滤波） =====================
+#define CAP_VOLT_ENTER_LOW_GEAR  1000  // <= 10.00V 强制进入苟命模式
+#define CAP_VOLT_EXIT_LOW_GEAR   1500  // >= 15.00V 允许恢复正常作战模式
 
-#define CAP_ENERGY_LOW          1000
+#define CHASSIS_SPEED_GEAR_LOW   0.6f  // 苟命模式速度倍率
+#define CHASSIS_SPEED_GEAR_MID   1.2f  // 正常作战速度倍率
+#define CHASSIS_SPEED_GEAR_HIGH  2.0f  // Shift 爆发速度倍率
 
 
 /* --- 静态控制变量 --- */
 static float world_yaw_target = 0.0f;
 static float world_pit_target = 0.0f;
 static float vx_ramp = 0.0f, vy_ramp = 0.0f;
+static uint8_t cap_low_gear_lock = 0;    // 超级电容低压锁档（滞回状态标志）
 
 static uint32_t last_rc_tick = 0;
 
@@ -126,7 +129,9 @@ void chassis_task_func(void const * argument) {
 
         /**************************************************************************************************************/
         // 遥控器掉线检测
-        if (current_tick - rc->vt13.last_update_tick > 200) {
+        // 遥控器超时判定：使用有符号差值，避免并发更新导致无符号下溢误判
+        int32_t rc_tick_diff = (int32_t)(current_tick - rc->vt13.last_update_tick);
+        if (rc_tick_diff > 200) {
             robot_ctrl.monitor.remote_online = 0;
             //robot_ctrl.chassis_mode = CHASSIS_RELAX;
 
@@ -185,24 +190,27 @@ void chassis_task_func(void const * argument) {
                     float vw_rc = (abs(rc->vt13.rc_vt13.wheel) > RC_DEADZONE) ? ((float)rc->vt13.rc_vt13.wheel / 660.0f) : 0.0f;
 
                     float vx_kb = 0.0f, vy_kb = 0.0f, vw_kb = 0.0f;
-                    float speed_ratio;
 
                     // 获取下位 C 板转发的超级电容剩余能量
                     uint16_t cap_energy = robot_ctrl.gateway_c_board.capacity_voltage;
+                    float speed_ratio;
 
-                    // 依据电容能量动态分配速度倍率
-                    // if (cap_energy > CAP_ENERGY_HIGH) {
-                    //     speed_ratio = 1.5f;       // 满电爆发模式
-                    // } else
-                    if (cap_energy > CAP_ENERGY_MIDDLE) {
-                        speed_ratio = 1.2f;       // 正常作战模式
-                    } else if (cap_energy > CAP_ENERGY_LOW) {
-                        speed_ratio = 1.0f;       // 节流模式
+                    // --- 滞回滤波逻辑 ---
+                    if (cap_low_gear_lock) {
+                        // 如果已经在低档锁定状态，必须充到 EXIT 阈值才能解锁
+                        if (cap_energy >= CAP_VOLT_EXIT_LOW_GEAR) cap_low_gear_lock = 0;
                     } else {
-                        speed_ratio = 0.6f;       // 苟命模式，防止断电
+                        // 如果在正常状态，跌破 ENTER 阈值才会触发锁定
+                        if (cap_energy <= CAP_VOLT_ENTER_LOW_GEAR) cap_low_gear_lock = 1;
                     }
-                    if (KEY_PRESSED(rc->vt13.key_vt13.v, KEY_VT13_SHIFT)) {
-                        speed_ratio = 2.0f;
+
+                    // --- 三档仲裁：低压锁最低档 > Shift最高档 > 默认中档 ---
+                    if (cap_low_gear_lock) {
+                        speed_ratio = CHASSIS_SPEED_GEAR_LOW;
+                    } else if (KEY_PRESSED(rc->vt13.key_vt13.v, KEY_VT13_SHIFT)) {
+                        speed_ratio = CHASSIS_SPEED_GEAR_HIGH;
+                    } else {
+                        speed_ratio = CHASSIS_SPEED_GEAR_MID;
                     }
 
                     if (KEY_PRESSED(rc->vt13.key_vt13.v, KEY_VT13_W)) vy_kb += speed_ratio;
@@ -228,6 +236,11 @@ void chassis_task_func(void const * argument) {
                     if (auto_spin_enable) {
                         vw_kb = -speed_ratio;    // 负号为左旋，可根据操作习惯改为正号
                     }
+
+                    // 动态调整 GM6020 阻尼：开启自转时加大阻尼锁死云台，停止自转时恢复基础阻尼
+                    float dynamic_kd = auto_spin_enable ? 8.0f : 2.5f;
+                    yaw_m->set_para(yaw_m, "Kd_v", &dynamic_kd);
+
 
                     // 更新上一帧按键状态（防抖记录）
                     last_r_pressed = r_pressed;
