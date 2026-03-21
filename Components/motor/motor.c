@@ -1251,7 +1251,7 @@ static void All_Motors_Init(void) {
     // 1. 达妙 PITCH (MIT模式) - 注意使用 CAN2
     // 参数含义: [ID, 句柄, 参数个数, Kp, Kd, P_MAX, V_MAX, T_MAX]
     J4310_PITCH.init(&J4310_PITCH, 0x01, &hcan2, 5,
-                     15.0,  /* Kp: 位置响应强度 */
+                     25.0,  /* Kp: 位置响应强度 */
                      2.0,   /* Kd: 阻尼，防止震荡 */
                      12.5,  /* P_MAX: 位置限幅 (rad) */
                      3.0,  /* V_MAX: 速度限幅 (rad/s) */
@@ -1288,9 +1288,9 @@ static void All_Motors_Init(void) {
     // 4. GM6020 YAW轴 (位置-速度串级)
     // 参数含义: [ID, 句柄, 参数个数, P_Kp, P_Ki, V_Kp, V_Ki, V_Kd, Out_Max]
     GM6020_YAW.init(&GM6020_YAW, 0x206, &hcan1, 9,
-                    150.0,     /* P_Kp */
+                    500.0,     /* P_Kp */
                     0.0,      /* P_Ki */
-                    210.0,    /* V_Kp */
+                    300.0,    /* V_Kp */
                     0.0,      /* V_Ki */
                     0.0,      /* V_Kd */
                     25000.0,   /* Out_Max */
